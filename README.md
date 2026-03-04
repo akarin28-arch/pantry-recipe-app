@@ -49,14 +49,27 @@ npx vercel --prod
 
 ### PostHog設定（任意）
 
+<details>
+<summary>ローカル環境での設定</summary>
+
 ```bash
 # .env.local を作成
 echo "NEXT_PUBLIC_POSTHOG_KEY=phc_xxxxx" > .env.local
 ```
+</details>
+
+<details>
+<summary>Vercel（本番環境）での設定</summary>
+
+1. Vercelのプロジェクト画面を開く
+2. **Settings** > **Environment Variables** に移動
+3. Keyに `NEXT_PUBLIC_POSTHOG_KEY`、Valueに `phc_xxxxx` (実際のキー) を入力
+4. **Save** を押して保存し、**Deployments** タブから最新のデプロイを "Redeploy" する
+</details>
 
 PostHogアカウント作成: https://posthog.com (無料枠: 月1万イベント)
 
-未設定の場合は `/api/events` にフォールバックしてstdoutにログ出力。
+未設定の場合は `/api/events` にフォールバックしてコンソールにログ出力されます。
 
 ## ランキングアルゴリズム
 
