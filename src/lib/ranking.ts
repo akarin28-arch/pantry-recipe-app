@@ -101,8 +101,12 @@ export function rankRecipes(
     })
     // Filter by max missing threshold
     .filter(r => r.missingCount <= maxMissing)
-    // Sort: missing count → missing amount → use-up score (desc) → time
+    // Sort: uses pantry items → missing count → missing amount → use-up score (desc) → time
     .sort((a, b) => {
+      const aUsesStock = a.useUpScore > 0;
+      const bUsesStock = b.useUpScore > 0;
+      if (aUsesStock !== bUsesStock) return aUsesStock ? -1 : 1;
+
       if (a.missingCount !== b.missingCount) return a.missingCount - b.missingCount;
       if (a.missingAmount !== b.missingAmount) return a.missingAmount - b.missingAmount;
       if (b.useUpScore !== a.useUpScore) return b.useUpScore - a.useUpScore;

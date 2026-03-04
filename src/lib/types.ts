@@ -83,7 +83,8 @@ export type AnalyticsEvent =
   | "cooked_clicked"
   | "shopping_list_copied"
   | "pantry_edited"
-  | "mode_switched";
+  | "mode_switched"
+  | "search_performed";
 
 export interface AnalyticsProps {
   missing_items_count?: number;

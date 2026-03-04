@@ -371,6 +371,12 @@ export default function HomePage() {
   const [appMode, setAppMode] = useState<"pantry" | "quick">("pantry");
   const [showOptions, setShowOptions] = useState(false);
 
+  // Search States
+  const [isSearching, setIsSearching] = useState(false);
+  const [hasSearched, setHasSearched] = useState(false);
+  const [homeRecipes, setHomeRecipes] = useState<RankedRecipe[]>([]);
+  const [shopRecipes, setShopRecipes] = useState<RankedRecipe[]>([]);
+
   // Init
   useEffect(() => {
     initAnalytics();
@@ -385,7 +391,7 @@ export default function HomePage() {
     // @ts-ignore
     if (settings.genre) setGenre(settings.genre);
     // @ts-ignore
-    if (settings.dishCount) setDishCount(settings.dishCount);
+    if (settings.dishCount !== undefined) setDishCount(settings.dishCount);
     // @ts-ignore
     if (settings.mode) setAppMode(settings.mode);
     setLoaded(true);
@@ -400,26 +406,33 @@ export default function HomePage() {
   }, [pantry, servings, timing, genre, dishCount, appMode, loaded]);
 
   const mealCount = getTimingArray(timing).length || 1;
-  const timingArr = getTimingArray(timing);
 
-  // Rankings
-  const homeRecipes = useMemo(() =>
-    // @ts-ignore
-    rankRecipes(pantry, { servings, timing: timingArr, genre, maxMissing: 0 }).slice(0, 3),
-    [pantry, servings, timingArr, genre]
-  );
+  const performSearch = () => {
+    setIsSearching(true);
+    setTimeout(() => {
+      const timingArr = getTimingArray(timing);
+      // @ts-ignore
+      const hr = rankRecipes(pantry, { servings, timing: timingArr, genre, maxMissing: 0 }).slice(0, 3);
+      // @ts-ignore
+      const sr = rankRecipes(pantry, { servings, timing: timingArr, genre, maxMissing: dishCount })
+        .filter(r => r.missingCount > 0)
+        .slice(0, 3);
 
-  const shopRecipes = useMemo(() =>
-    // @ts-ignore
-    rankRecipes(pantry, { servings, timing: timingArr, genre, maxMissing: dishCount })
-      .filter(r => r.missingCount > 0)
-      .slice(0, 3),
-    [pantry, servings, timingArr, genre, dishCount]
-  );
+      setHomeRecipes(hr as RankedRecipe[]);
+      setShopRecipes(sr as RankedRecipe[]);
+      setHasSearched(true);
+      setIsSearching(false);
+      track("search_performed", { homeCount: hr.length, shopCount: sr.length, appMode });
+    }, 500);
+  };
 
   useEffect(() => {
-    if (loaded) track("generate_viewed", { homeCount: homeRecipes.length, shopCount: shopRecipes.length, peopleCount: servings, timing, genre, appMode });
-  }, [homeRecipes, shopRecipes, loaded]);
+    if (loaded && !hasSearched) {
+      // First load automatic search
+      performSearch();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [loaded]);
 
   const handleCook = (recipe: RankedRecipe) => {
     setPantry(prev => decrementPantry(prev, recipe));
@@ -585,9 +598,13 @@ export default function HomePage() {
                   )}
                 </div>
               ) : homeRecipes.length === 0 ? (
-                <div className="text-center py-6 text-pantry-text-light text-[13px]">
-                  <div className="text-3xl mb-2">😅</div>
-                  該当するレシピがありません。条件を変えてみてください。
+                <div className="text-center py-6 px-4 text-pantry-text-light text-[13px] bg-white rounded-xl border border-dashed border-[#efe6d4] shadow-sm">
+                  <div className="text-4xl mb-3">😅</div>
+                  <strong className="text-pantry-text-mid block mb-2 text-[14px]">条件に一致するレシピが見つかりませんでした</strong>
+                  <p className="text-xs leading-relaxed text-[#6a5520]">
+                    「ジャンル」を "すべて" にするか、<br />
+                    「買い足す食材の上限」を増やしてみてください。
+                  </p>
                 </div>
               ) : (
                 <div className="flex flex-col gap-2.5">
