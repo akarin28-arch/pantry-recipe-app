@@ -39,8 +39,10 @@ export function savePantry(items: PantryItem[]): void {
 export function loadSettings(): AppSettings {
   return safeGet<AppSettings>(KEYS.settings, {
     servings: 2,
-    mealType: "any",
-    mealCount: 1,
+    timing: ["朝のみ"],
+    genre: "すべて",
+    dishCount: 3,
+    mode: "pantry",
   });
 }
 export function saveSettings(s: AppSettings): void {

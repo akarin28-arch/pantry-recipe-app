@@ -17,31 +17,56 @@ const CATEGORIES = [
   { id: "meat", label: "肉・魚", emoji: "🥩" },
   { id: "dairy", label: "乳製品・卵", emoji: "🥚" },
   { id: "grain", label: "米・麺・粉", emoji: "🍚" },
+  { id: "seasoning", label: "調味料", emoji: "🧂" },
+  { id: "preserved", label: "保存食材（缶詰・乾物など）", emoji: "🥫" },
   { id: "other", label: "その他", emoji: "🫙" },
 ] as const;
 
-const MEAL_TYPES = [
-  { id: "any", label: "指定なし" },
-  { id: "breakfast", label: "朝食" },
-  { id: "lunch", label: "昼食" },
-  { id: "dinner", label: "夕食" },
+const TIMINGS = [
+  { id: "朝のみ", label: "朝のみ" },
+  { id: "昼のみ", label: "昼のみ" },
+  { id: "夜のみ", label: "夕のみ" },
+  { id: "朝＋昼", label: "朝＋昼" },
+  { id: "昼＋夜", label: "昼＋夕" },
+  { id: "朝昼夜", label: "朝昼夕" },
 ];
 
-const UNITS = ["g","kg","ml","L","個","本","枚","束","袋","丁","合","玉","切れ","パック","缶"];
+const getTimingArray = (tLabel: string): string[] => {
+  if (tLabel === "朝のみ") return ["breakfast"];
+  if (tLabel === "昼のみ") return ["lunch"];
+  if (tLabel === "夜のみ") return ["dinner"];
+  if (tLabel === "朝＋昼") return ["breakfast", "lunch"];
+  if (tLabel === "昼＋夜") return ["lunch", "dinner"];
+  if (tLabel === "朝昼夜") return ["breakfast", "lunch", "dinner"];
+  return [];
+};
+
+const GENRES = ["すべて", "和", "洋", "中", "その他"];
+const UNITS = ["g", "kg", "ml", "L", "個", "本", "枚", "束", "袋", "丁", "合", "玉", "切れ", "パック", "缶", "杯"];
+
+const COMMON_ITEMS: Record<string, string[]> = {
+  vegetable: ["玉ねぎ", "にんじん", "じゃがいも", "キャベツ", "長ねぎ", "もやし", "きゅうり", "ピーマン", "大根", "ごぼう", "れんこん"],
+  meat: ["鶏もも肉", "鶏ひき肉", "豚薄切り肉", "豚ロース肉", "豚ひき肉", "合いびき肉", "ウインナー", "ハム", "鮭"],
+  dairy: ["卵", "牛乳", "チーズ", "バター"],
+  grain: ["米", "スパゲティ", "焼きそば麺", "パン粉", "小麦粉"],
+  seasoning: ["塩", "胡椒", "醤油", "サラダ油", "ごま油", "みりん", "料理酒", "砂糖", "だし", "ケチャップ", "マヨネーズ", "ソース", "味噌", "豆板醤", "生姜", "にんにく"],
+  preserved: ["カレールー", "ツナ缶", "わかめ"],
+  other: ["豆腐", "こんにゃく"]
+};
 
 const SAMPLE_PANTRY: PantryItem[] = [
-  { id:"s1",name:"鶏もも肉",amount:300,unit:"g",category:"meat" },
-  { id:"s2",name:"豚薄切り肉",amount:200,unit:"g",category:"meat" },
-  { id:"s3",name:"卵",amount:6,unit:"個",category:"dairy" },
-  { id:"s4",name:"玉ねぎ",amount:3,unit:"個",category:"vegetable" },
-  { id:"s5",name:"にんじん",amount:2,unit:"本",category:"vegetable" },
-  { id:"s6",name:"じゃがいも",amount:4,unit:"個",category:"vegetable" },
-  { id:"s7",name:"キャベツ",amount:6,unit:"枚",category:"vegetable" },
-  { id:"s8",name:"長ねぎ",amount:2,unit:"本",category:"vegetable" },
-  { id:"s9",name:"もやし",amount:1,unit:"袋",category:"vegetable" },
-  { id:"s10",name:"米",amount:5,unit:"合",category:"grain" },
-  { id:"s11",name:"豆腐",amount:1,unit:"丁",category:"other" },
-  { id:"s12",name:"カレールー",amount:8,unit:"個",category:"other" },
+  { id: "s1", name: "鶏もも肉", amount: 300, unit: "g", category: "meat" },
+  { id: "s2", name: "豚薄切り肉", amount: 200, unit: "g", category: "meat" },
+  { id: "s3", name: "卵", amount: 6, unit: "個", category: "dairy" },
+  { id: "s4", name: "玉ねぎ", amount: 3, unit: "個", category: "vegetable" },
+  { id: "s5", name: "にんじん", amount: 2, unit: "本", category: "vegetable" },
+  { id: "s6", name: "じゃがいも", amount: 4, unit: "個", category: "vegetable" },
+  { id: "s7", name: "キャベツ", amount: 6, unit: "枚", category: "vegetable" },
+  { id: "s8", name: "長ねぎ", amount: 2, unit: "本", category: "vegetable" },
+  { id: "s9", name: "もやし", amount: 1, unit: "袋", category: "vegetable" },
+  { id: "s10", name: "米", amount: 5, unit: "合", category: "grain" },
+  { id: "s11", name: "豆腐", amount: 1, unit: "丁", category: "other" },
+  { id: "s12", name: "カレールー", amount: 8, unit: "個", category: "preserved" },
 ];
 
 const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
@@ -50,7 +75,7 @@ const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 
 //  Sub-components
 // ═══════════════════════════════════════════════════════════════
 
-function Badge({ children, variant = "default" }: { children: React.ReactNode; variant?: "default"|"success"|"warn" }) {
+function Badge({ children, variant = "default" }: { children: React.ReactNode; variant?: "default" | "success" | "warn" }) {
   const styles = {
     default: "bg-[#f0e8d8] text-pantry-accent",
     success: "bg-pantry-success-bg text-pantry-success",
@@ -82,6 +107,8 @@ function RecipeCard({ r, mode, onCook }: { r: RankedRecipe & { displayServings: 
             <div className="flex gap-1 flex-wrap">
               <Badge>⏱ {r.time}分</Badge>
               <Badge>{r.difficulty}</Badge>
+              {/* @ts-ignore - allow genre from recipe objects */}
+              <Badge>{r.genre}</Badge>
               <Badge>{r.displayServings}</Badge>
               {tags.map((t, i) => <Badge key={i} variant={t.variant}>{t.label}</Badge>)}
             </div>
@@ -166,7 +193,7 @@ function ShoppingMemo({ recipes }: { recipes: RankedRecipe[] }) {
       setCopied(true);
       track("shopping_list_copied", { missing_items_count: items.length });
       setTimeout(() => setCopied(false), 2000);
-    } catch {}
+    } catch { }
   };
 
   return (
@@ -228,8 +255,7 @@ function PantryItemRow({ item, onUpdate, onDelete }: {
   const isNear = item.expiry && !isExpired && (new Date(item.expiry).getTime() - Date.now()) / 86400000 < 3;
 
   return (
-    <div className="flex items-center gap-1.5 py-1 px-2 rounded cursor-pointer hover:bg-[rgba(120,90,60,0.04)] group transition-colors"
-      onClick={() => setEditing(true)}>
+    <div className="flex items-center gap-1.5 py-1 px-2 rounded hover:bg-[rgba(120,90,60,0.04)] group transition-colors">
       <span className="flex-1 text-[13px] font-mincho text-pantry-text">
         {item.name}
         {isExpired && <span className="text-[10px] text-red-500 ml-1">期限切れ</span>}
@@ -237,7 +263,11 @@ function PantryItemRow({ item, onUpdate, onDelete }: {
       </span>
       <span className="text-[13px] text-pantry-text-light font-mincho">{item.amount}{item.unit}</span>
       {item.expiry && <span className={`text-[10px] ${isExpired ? "text-red-500" : "text-pantry-text-light"}`}>{item.expiry.slice(5)}</span>}
-      <button onClick={e => { e.stopPropagation(); onDelete(item.id); }}
+      <button onClick={() => setEditing(true)}
+        className="text-[11px] text-pantry-accent-light px-1 border border-pantry-accent-light rounded hover:bg-pantry-accent-light hover:text-white transition-colors">
+        ✏️ 編集
+      </button>
+      <button onClick={() => onDelete(item.id)}
         className="opacity-0 group-hover:opacity-100 text-[14px] text-red-400 px-1 transition-opacity">×</button>
     </div>
   );
@@ -245,19 +275,22 @@ function PantryItemRow({ item, onUpdate, onDelete }: {
 
 function AddItemInline({ onAdd, category }: { onAdd: (i: PantryItem) => void; category: string }) {
   const [open, setOpen] = useState(false);
-  const [f, setF] = useState({ name: "", amount: "", unit: "g", expiry: "" });
+  const [isManual, setIsManual] = useState(false);
+  const common = COMMON_ITEMS[category] || [];
+  const [f, setF] = useState({ name: common[0] || "", amount: "", unit: "g", expiry: "" });
 
   const submit = () => {
     if (f.name.trim()) {
       onAdd({ id: uid(), name: f.name.trim(), amount: parseFloat(f.amount) || 1, unit: f.unit, category: category as PantryItem["category"], expiry: f.expiry || undefined });
-      setF({ name: "", amount: "", unit: "g", expiry: "" });
+      setF({ name: common[0] || "", amount: "", unit: "g", expiry: "" });
       setOpen(false);
+      setIsManual(false);
       track("pantry_edited", { action: "add" });
     }
   };
 
   if (!open) return (
-    <button onClick={() => setOpen(true)}
+    <button onClick={() => { setOpen(true); setIsManual(false); }}
       className="w-full py-1 text-[12px] border-2 border-dashed border-pantry-accent-light text-pantry-text-light rounded-lg font-mincho hover:border-pantry-accent hover:text-pantry-accent transition-colors">
       ＋ 追加
     </button>
@@ -265,9 +298,21 @@ function AddItemInline({ onAdd, category }: { onAdd: (i: PantryItem) => void; ca
 
   return (
     <div className="flex flex-wrap gap-1.5 p-1.5 bg-[rgba(120,90,60,0.05)] rounded-lg items-center">
-      <input value={f.name} onChange={e => setF({ ...f, name: e.target.value })} placeholder="食材名" autoFocus
-        onKeyDown={e => e.key === "Enter" && submit()}
-        className="flex-1 min-w-[70px] px-2 py-1 rounded border border-pantry-accent-light bg-pantry-card font-mincho text-[13px]" />
+      {!isManual ? (
+        <select value={f.name} onChange={e => {
+          if (e.target.value === "__manual__") { setIsManual(true); setF({ ...f, name: "" }); }
+          else setF({ ...f, name: e.target.value });
+        }}
+          className="flex-1 min-w-[80px] px-1 py-1 rounded border border-pantry-accent-light bg-pantry-card font-mincho text-[13px]">
+          {common.map(n => <option key={n} value={n}>{n}</option>)}
+          <option value="__manual__">（手入力する...）</option>
+        </select>
+      ) : (
+        <input value={f.name} onChange={e => setF({ ...f, name: e.target.value })} placeholder="食材名" autoFocus
+          onKeyDown={e => e.key === "Enter" && submit()}
+          className="flex-1 min-w-[70px] px-2 py-1 rounded border border-pantry-accent-light bg-pantry-card font-mincho text-[13px]" />
+      )}
+
       <input value={f.amount} onChange={e => setF({ ...f, amount: e.target.value })} type="number" placeholder="量"
         className="w-14 px-2 py-1 rounded border border-pantry-accent-light bg-pantry-card font-mincho text-[13px] text-center" />
       <select value={f.unit} onChange={e => setF({ ...f, unit: e.target.value })}
@@ -290,20 +335,33 @@ export default function HomePage() {
   const [pantry, setPantry] = useState<PantryItem[]>([]);
   const [loaded, setLoaded] = useState(false);
   const [servings, setServings] = useState(2);
-  const [mealType, setMealType] = useState("any");
-  const [mealCount, setMealCount] = useState(1);
-  const [maxBuy, setMaxBuy] = useState(3);
+  const [timing, setTiming] = useState("朝のみ");
+  const [genre, setGenre] = useState("すべて");
+  const [dishCount, setDishCount] = useState(3);
   const [toast, setToast] = useState<string | null>(null);
+
+  // App Mode (pantry = standard tracking, quick = add and search)
+  // @ts-ignore
+  const [appMode, setAppMode] = useState<"pantry" | "quick">("pantry");
+  const [showOptions, setShowOptions] = useState(false);
 
   // Init
   useEffect(() => {
     initAnalytics();
     const saved = loadPantry();
     const settings = loadSettings();
-    setPantry(saved.length > 0 ? saved : SAMPLE_PANTRY);
-    setServings(settings.servings);
-    setMealType(settings.mealType);
-    setMealCount(settings.mealCount);
+    setPantry(saved.length > 0 ? saved : []);
+
+    // We can merge old settings smoothly
+    if (settings.servings) setServings(settings.servings);
+    // @ts-ignore
+    if (settings.timing && settings.timing[0]) setTiming(settings.timing[0]);
+    // @ts-ignore
+    if (settings.genre) setGenre(settings.genre);
+    // @ts-ignore
+    if (settings.dishCount) setDishCount(settings.dishCount);
+    // @ts-ignore
+    if (settings.mode) setAppMode(settings.mode);
     setLoaded(true);
   }, []);
 
@@ -311,24 +369,30 @@ export default function HomePage() {
   useEffect(() => {
     if (!loaded) return;
     savePantry(pantry);
-    saveSettings({ servings, mealType, mealCount });
-  }, [pantry, servings, mealType, mealCount, loaded]);
+    // @ts-ignore (Saving mixed old/new settings schema)
+    saveSettings({ servings, timing: [timing], genre, dishCount, mode: appMode });
+  }, [pantry, servings, timing, genre, dishCount, appMode, loaded]);
+
+  const mealCount = getTimingArray(timing).length || 1;
+  const timingArr = getTimingArray(timing);
 
   // Rankings
   const homeRecipes = useMemo(() =>
-    rankRecipes(pantry, { servings, mealType, mealCount, maxMissing: 0 }).slice(0, 3),
-    [pantry, servings, mealType, mealCount]
+    // @ts-ignore
+    rankRecipes(pantry, { servings, timing: timingArr, genre, maxMissing: 0 }).slice(0, 3),
+    [pantry, servings, timingArr, genre]
   );
 
   const shopRecipes = useMemo(() =>
-    rankRecipes(pantry, { servings, mealType, mealCount, maxMissing: maxBuy })
+    // @ts-ignore
+    rankRecipes(pantry, { servings, timing: timingArr, genre, maxMissing: dishCount })
       .filter(r => r.missingCount > 0)
       .slice(0, 3),
-    [pantry, servings, mealType, mealCount, maxBuy]
+    [pantry, servings, timingArr, genre, dishCount]
   );
 
   useEffect(() => {
-    if (loaded) track("generate_viewed", { homeCount: homeRecipes.length, shopCount: shopRecipes.length, peopleCount: servings, mealType, mealCount });
+    if (loaded) track("generate_viewed", { homeCount: homeRecipes.length, shopCount: shopRecipes.length, peopleCount: servings, timing, genre, appMode });
   }, [homeRecipes, shopRecipes, loaded]);
 
   const handleCook = (recipe: RankedRecipe) => {
@@ -350,12 +414,12 @@ export default function HomePage() {
   }));
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-pantry-bg via-[#f5ede0] to-[#f0e8d8]">
+    <div className="min-h-screen bg-gradient-to-br from-pantry-bg via-[#f5ede0] to-[#f0e8d8] pb-10">
       {/* Toast */}
       {toast && (
         <div className="fixed top-[70px] left-1/2 -translate-x-1/2 z-50 bg-pantry-success text-white px-5 py-2.5 rounded-xl text-sm font-mincho shadow-lg"
           style={{ animation: "slideUp 0.3s" }}>
-          🍳 {toast}を作りました！在庫を更新しました
+          🍳 {toast}を作りました！
         </div>
       )}
 
@@ -366,11 +430,10 @@ export default function HomePage() {
           <h1 className="text-lg font-bold text-pantry-text font-mincho tracking-wide">うちの食材で何つくる？</h1>
         </div>
         <div className="max-w-[640px] mx-auto flex border-t border-pantry-border">
-          {([["home", "🏠 今日のおすすめ"], ["pantry", "🧊 パントリー"]] as const).map(([id, label]) => (
-            <button key={id} onClick={() => { setTab(id); track("mode_switched", { to: id }); }}
-              className={`flex-1 py-2.5 text-[13px] font-mincho transition-all border-b-[2.5px] ${
-                tab === id ? "font-bold text-pantry-accent border-pantry-accent" : "text-pantry-text-light border-transparent"
-              }`}>
+          {([["home", "🏠 今日のおすすめ"], ["pantry", "🧊 うちの食材"]] as const).map(([id, label]) => (
+            <button key={id} onClick={() => { setTab(id as any); track("mode_switched", { to: id }); }}
+              className={`flex-1 py-2.5 text-[13px] font-mincho transition-all border-b-[2.5px] ${tab === id ? "font-bold text-pantry-accent border-pantry-accent" : "text-pantry-text-light border-transparent"
+                }`}>
               {label}
             </button>
           ))}
@@ -378,44 +441,77 @@ export default function HomePage() {
       </header>
 
       <main className="max-w-[640px] mx-auto px-4 py-4">
+        {/* Guide / Mode Selection */}
+        <div className="mb-4 bg-white/60 p-3 rounded-xl border border-pantry-accent-light shadow-sm text-[13px] font-mincho text-pantry-text">
+          <div className="flex justify-between items-center mb-2">
+            <strong>📖 使い方</strong>
+            <select value={appMode} onChange={e => { setAppMode(e.target.value as any); if (e.target.value === "quick") setPantry([]); }}
+              className="px-2 py-1 rounded bg-pantry-bg border border-pantry-accent text-[12px] font-bold text-pantry-accent">
+              <option value="pantry">しっかり管理モード</option>
+              <option value="quick">今ある分だけモード</option>
+            </select>
+          </div>
+          <p className="text-[#6a5520] leading-relaxed text-xs">
+            {appMode === "pantry"
+              ? "「うちの食材」タブにすべての家にあるものを登録しておくと、今から買い物なしで作れるレシピを自動で提案します。"
+              : "今回使いたい食材だけを「うちの食材」タブに入れて、サクッと作れるレシピを探すお手軽モードです。（※切り替えると現在の在庫表示はリセットされます）"}
+          </p>
+        </div>
+
         {tab === "home" && (
           <>
             {/* Options */}
-            <div className="bg-pantry-card border border-pantry-border rounded-xl p-3.5 mb-4">
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="text-[11px] font-bold text-pantry-text-mid block mb-1">食事タイプ</label>
-                  <select value={mealType} onChange={e => setMealType(e.target.value)}
-                    className="w-full px-2 py-1.5 rounded-lg border border-pantry-accent-light bg-pantry-bg font-mincho text-[13px] text-pantry-text">
-                    {MEAL_TYPES.map(m => <option key={m.id} value={m.id}>{m.label}</option>)}
-                  </select>
-                </div>
-                <div>
-                  <label className="text-[11px] font-bold text-pantry-text-mid block mb-1">人数</label>
+            <div className="bg-pantry-card border border-pantry-border rounded-xl p-3.5 mb-4 shadow-sm">
+              <div className="flex flex-col gap-3">
+                <div className="flex justify-between items-center">
+                  <span className="text-[13px] font-bold text-pantry-text-mid">食べる人数</span>
                   <div className="flex gap-1">
                     {[1, 2, 3, 4].map(n => (
                       <button key={n} onClick={() => setServings(n)}
-                        className={`flex-1 py-1.5 rounded-lg text-[13px] font-semibold font-mincho border transition-all ${
-                          servings === n ? "bg-pantry-accent text-white border-pantry-accent" : "bg-pantry-bg text-pantry-accent border-pantry-accent-light"
-                        }`}>
+                        className={`w-12 py-1.5 rounded-lg text-[13px] font-semibold font-mincho border transition-all ${servings === n ? "bg-pantry-accent text-white border-pantry-accent shadow-sm" : "bg-pantry-bg text-pantry-accent border-pantry-accent-light"
+                          }`}>
                         {n}人
                       </button>
                     ))}
                   </div>
                 </div>
-              </div>
-              <div className="mt-2.5">
-                <label className="text-[11px] font-bold text-pantry-text-mid block mb-1">食数</label>
-                <div className="flex gap-1">
-                  {[1, 2, 3].map(n => (
-                    <button key={n} onClick={() => setMealCount(n)}
-                      className={`flex-1 py-1.5 rounded-lg text-[13px] font-semibold font-mincho border transition-all ${
-                        mealCount === n ? "bg-pantry-accent text-white border-pantry-accent" : "bg-pantry-bg text-pantry-accent border-pantry-accent-light"
-                      }`}>
-                      {n}食
-                    </button>
-                  ))}
-                </div>
+
+                <button onClick={() => setShowOptions(!showOptions)}
+                  className="text-left text-[12px] font-bold text-pantry-text-light flex justify-between items-center border-t border-dashed border-[#efe6d4] pt-2">
+                  <span>⚙️ オプション（詳細検索）</span>
+                  <span className="bg-[rgba(120,90,60,0.05)] px-2 py-0.5 rounded">{showOptions ? "閉じる ▴" : "開く ▾"}</span>
+                </button>
+
+                {showOptions && (
+                  <div className="grid grid-cols-2 gap-3 pb-1">
+                    <div>
+                      <label className="text-[11px] font-bold text-pantry-text-mid block mb-1">食事のタイミング</label>
+                      <select value={timing} onChange={e => setTiming(e.target.value)}
+                        className="w-full px-2 py-1.5 rounded-lg border border-pantry-accent-light bg-pantry-bg font-mincho text-[13px] text-pantry-text">
+                        {TIMINGS.map(m => <option key={m.id} value={m.id}>{m.label}</option>)}
+                      </select>
+                    </div>
+                    <div>
+                      <label className="text-[11px] font-bold text-pantry-text-mid block mb-1">ジャンル</label>
+                      <select value={genre} onChange={e => setGenre(e.target.value)}
+                        className="w-full px-2 py-1.5 rounded-lg border border-pantry-accent-light bg-pantry-bg font-mincho text-[13px] text-pantry-text">
+                        {GENRES.map(m => <option key={m} value={m}>{m}</option>)}
+                      </select>
+                    </div>
+                    <div className="col-span-2 mt-1">
+                      <label className="text-[11px] font-bold text-pantry-text-mid block mb-1">買い足す食材の上限</label>
+                      <div className="flex gap-1">
+                        {[1, 2, 3, 5].map(n => (
+                          <button key={n} onClick={() => setDishCount(n)}
+                            className={`flex-1 py-1 rounded-lg text-[12px] font-semibold font-mincho border transition-all ${dishCount === n ? "bg-pantry-warn text-white border-pantry-warn shadow-sm" : "bg-pantry-bg text-pantry-warn border-[#f0d890]"
+                              }`}>
+                            {n}品まで
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+                )}
               </div>
             </div>
 
@@ -424,10 +520,22 @@ export default function HomePage() {
               <h2 className="text-[15px] font-bold text-pantry-text font-mincho mb-2.5 flex items-center gap-1.5">
                 🏠 買い物なしで作れるレシピ <Badge variant="success">{homeRecipes.length}件</Badge>
               </h2>
-              {homeRecipes.length === 0 ? (
+
+              {homeRecipes.length > 1 && (
+                <div className="mb-3 text-[11px] text-[#6a5520] bg-[rgba(120,90,60,0.05)] p-2 rounded flex items-center gap-1.5 font-mincho">
+                  <span>💡 この中からどれか1つを選んで作れます（※作ると在庫が減ります）</span>
+                </div>
+              )}
+
+              {pantry.length === 0 ? (
+                <div className="text-center py-6 text-pantry-text-light text-[13px]">
+                  <div className="text-3xl mb-2">🧊</div>
+                  食材が登録されていません。<br />「うちの食材」タブから食材を追加してください。
+                </div>
+              ) : homeRecipes.length === 0 ? (
                 <div className="text-center py-6 text-pantry-text-light text-[13px]">
                   <div className="text-3xl mb-2">😅</div>
-                  該当するレシピがありません。パントリーに食材を追加するか条件を変えてみてください。
+                  該当するレシピがありません。条件を変えてみてください。
                 </div>
               ) : (
                 <div className="flex flex-col gap-2.5">
@@ -442,24 +550,13 @@ export default function HomePage() {
             <div>
               <div className="flex items-center gap-2 mb-2.5 flex-wrap">
                 <h2 className="text-[15px] font-bold text-pantry-text font-mincho flex items-center gap-1.5 m-0">
-                  🛒 ちょい足しレシピ
+                  🛒 少し買い足して作れるレシピ
                 </h2>
-                <div className="flex gap-1 items-center">
-                  <span className="text-[11px] text-pantry-text-light">上限:</span>
-                  {[1, 2, 3, 5].map(n => (
-                    <button key={n} onClick={() => setMaxBuy(n)}
-                      className={`px-2 py-0.5 rounded text-[11px] font-semibold font-mincho border transition-all ${
-                        maxBuy === n ? "bg-pantry-warn text-white border-pantry-warn" : "bg-transparent text-pantry-warn border-[#f0d890]"
-                      }`}>
-                      {n}品
-                    </button>
-                  ))}
-                </div>
               </div>
 
               {shopRecipes.length > 0 && <ShoppingMemo recipes={shopRecipes} />}
 
-              {shopRecipes.length === 0 ? (
+              {pantry.length === 0 ? null : shopRecipes.length === 0 ? (
                 <div className="text-center py-5 text-pantry-text-light text-[13px]">
                   <div className="text-2xl mb-1">🎉</div>
                   買い物なしでたくさん作れます！
@@ -481,15 +578,17 @@ export default function HomePage() {
               <h2 className="text-[15px] font-bold text-pantry-text font-mincho flex items-center gap-1.5 m-0">
                 🧊 うちの食材 <Badge>{pantry.length}品目</Badge>
               </h2>
-              <button onClick={() => { setPantry(SAMPLE_PANTRY); track("pantry_edited", { action: "load_sample" }); }}
-                className="text-[12px] px-2.5 py-1 rounded-lg border border-pantry-accent-light text-pantry-accent font-mincho hover:bg-[rgba(120,90,60,0.06)] transition-colors">
-                サンプル投入
-              </button>
+              {appMode === "pantry" && (
+                <button onClick={() => { setPantry(SAMPLE_PANTRY); track("pantry_edited", { action: "load_sample" }); }}
+                  className="text-[12px] px-2.5 py-1 rounded-lg border border-pantry-accent-light text-pantry-accent font-mincho hover:bg-[rgba(120,90,60,0.06)] transition-colors">
+                  サンプル投入
+                </button>
+              )}
             </div>
 
             <div className="flex flex-col gap-3">
               {grouped.map(g => (
-                <div key={g.id} className="bg-pantry-card border border-pantry-border rounded-xl overflow-hidden">
+                <div key={g.id} className="bg-pantry-card border border-pantry-border rounded-xl overflow-hidden shadow-sm">
                   <div className="px-3 py-2 bg-[rgba(120,90,60,0.04)] border-b border-[#efe6d4] flex items-center gap-1.5">
                     <span>{g.emoji}</span>
                     <span className="text-[13px] font-bold text-pantry-text-mid">{g.label}</span>
@@ -510,10 +609,9 @@ export default function HomePage() {
             <div className="mt-5 p-3.5 bg-pantry-card border border-pantry-border rounded-xl">
               <div className="text-[13px] font-bold text-pantry-text-mid mb-1.5">💡 ヒント</div>
               <div className="text-[12px] text-pantry-text-light leading-relaxed space-y-1">
-                <p>・食材名をタップすると編集できます</p>
-                <p>・期限を設定すると、期限が近い食材を優先消費するレシピが上位に</p>
-                <p>・「作った！」ボタンで在庫が自動減算されます</p>
-                <p>・データはブラウザに自動保存されます</p>
+                <p>・「✏️ 編集」ボタンから量や期限を変更できます</p>
+                <p>・おすすめ画面で「作った！」ボタンを押すと在庫が自動減算されます</p>
+                <p>・データはログイン不要でブラウザに自動保存されます</p>
               </div>
             </div>
           </>

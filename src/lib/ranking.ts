@@ -27,12 +27,16 @@ export function rankRecipes(
   pantry: PantryItem[],
   options: RankingOptions
 ): RankedRecipe[] {
-  const { servings = 2, mealType = "any", mealCount = 1, maxMissing = 0 } = options;
+  const { servings = 2, timing = [], genre = "すべて", maxMissing = 0 } = options;
   const today = new Date().toISOString().slice(0, 10);
 
+  const mealCount = Math.max(1, timing.length);
+
   const ranked = recipes
-    // Filter by meal type
-    .filter(r => mealType === "any" || r.mealType.includes(mealType))
+    // Filter by timing
+    .filter(r => timing.length === 0 || timing.includes("any") || r.mealType.some(m => timing.includes(m)))
+    // Filter by genre
+    .filter(r => genre === "すべて" || r.genre === genre)
     .map(recipe => {
       const scale = (servings / recipe.baseServings) * mealCount;
 

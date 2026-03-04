@@ -6,7 +6,7 @@ export interface PantryItem {
   name: string;
   amount: number;
   unit: string;
-  category: "meat" | "vegetable" | "dairy" | "grain" | "other";
+  category: "meat" | "vegetable" | "dairy" | "grain" | "seasoning" | "preserved" | "other";
   expiry?: string; // YYYY-MM-DD, optional
 }
 
@@ -21,6 +21,7 @@ export interface Recipe {
   id: string;
   name: string;
   description: string;
+  genre: "和" | "洋" | "中" | "その他";
   mealType: string[];  // "breakfast" | "lunch" | "dinner" | "snack"
   time: number;        // minutes
   difficulty: "簡単" | "普通" | "本格的";
@@ -49,15 +50,17 @@ export interface RankedRecipe extends Recipe {
 
 export interface RankingOptions {
   servings: number;
-  mealType: string;
-  mealCount: number;
+  timing: string[];
+  genre: string;
   maxMissing: number;
 }
 
 export interface AppSettings {
   servings: number;
-  mealType: string;
-  mealCount: number;
+  timing: string[];
+  genre: string;
+  dishCount: number;
+  mode: "pantry" | "quick";
 }
 
 export interface AppData {
