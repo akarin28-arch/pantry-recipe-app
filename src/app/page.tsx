@@ -1,0 +1,528 @@
+"use client";
+
+import { useState, useEffect, useMemo } from "react";
+import type { PantryItem, RankedRecipe, MissingItem } from "@/lib/types";
+import { recipes } from "@/lib/recipes";
+import { rankRecipes, decrementPantry } from "@/lib/ranking";
+import {
+  loadPantry, savePantry,
+  loadSettings, saveSettings,
+  addCookEvent,
+} from "@/lib/storage";
+import { initAnalytics, track } from "@/lib/analytics";
+
+// ── Constants ──
+const CATEGORIES = [
+  { id: "vegetable", label: "野菜", emoji: "🥬" },
+  { id: "meat", label: "肉・魚", emoji: "🥩" },
+  { id: "dairy", label: "乳製品・卵", emoji: "🥚" },
+  { id: "grain", label: "米・麺・粉", emoji: "🍚" },
+  { id: "other", label: "その他", emoji: "🫙" },
+] as const;
+
+const MEAL_TYPES = [
+  { id: "any", label: "指定なし" },
+  { id: "breakfast", label: "朝食" },
+  { id: "lunch", label: "昼食" },
+  { id: "dinner", label: "夕食" },
+];
+
+const UNITS = ["g","kg","ml","L","個","本","枚","束","袋","丁","合","玉","切れ","パック","缶"];
+
+const SAMPLE_PANTRY: PantryItem[] = [
+  { id:"s1",name:"鶏もも肉",amount:300,unit:"g",category:"meat" },
+  { id:"s2",name:"豚薄切り肉",amount:200,unit:"g",category:"meat" },
+  { id:"s3",name:"卵",amount:6,unit:"個",category:"dairy" },
+  { id:"s4",name:"玉ねぎ",amount:3,unit:"個",category:"vegetable" },
+  { id:"s5",name:"にんじん",amount:2,unit:"本",category:"vegetable" },
+  { id:"s6",name:"じゃがいも",amount:4,unit:"個",category:"vegetable" },
+  { id:"s7",name:"キャベツ",amount:6,unit:"枚",category:"vegetable" },
+  { id:"s8",name:"長ねぎ",amount:2,unit:"本",category:"vegetable" },
+  { id:"s9",name:"もやし",amount:1,unit:"袋",category:"vegetable" },
+  { id:"s10",name:"米",amount:5,unit:"合",category:"grain" },
+  { id:"s11",name:"豆腐",amount:1,unit:"丁",category:"other" },
+  { id:"s12",name:"カレールー",amount:8,unit:"個",category:"other" },
+];
+
+const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
+
+// ═══════════════════════════════════════════════════════════════
+//  Sub-components
+// ═══════════════════════════════════════════════════════════════
+
+function Badge({ children, variant = "default" }: { children: React.ReactNode; variant?: "default"|"success"|"warn" }) {
+  const styles = {
+    default: "bg-[#f0e8d8] text-pantry-accent",
+    success: "bg-pantry-success-bg text-pantry-success",
+    warn: "bg-pantry-warn-bg text-pantry-warn",
+  };
+  return (
+    <span className={`text-[11px] px-2 py-0.5 rounded-full whitespace-nowrap font-mincho ${styles[variant]}`}>
+      {children}
+    </span>
+  );
+}
+
+function RecipeCard({ r, mode, onCook }: { r: RankedRecipe & { displayServings: string }; mode: string; onCook: (r: RankedRecipe) => void }) {
+  const [open, setOpen] = useState(false);
+
+  const tags: { label: string; variant: "success" | "warn" }[] = [];
+  if (r.missingCount === 0) tags.push({ label: "✅ 買い物不要", variant: "success" });
+  if (r.useUpScore > 3) tags.push({ label: "♻️ 食材使い切り", variant: "success" });
+  if (r.time <= 15) tags.push({ label: "⚡ 時短", variant: "success" });
+  if (r.missingCount > 0) tags.push({ label: `🛒 あと${r.missingCount}品`, variant: "warn" });
+
+  return (
+    <div className={`rounded-xl overflow-hidden border border-pantry-border bg-pantry-card transition-shadow ${open ? "shadow-lg" : "shadow-sm"}`}>
+      <div className="p-3.5 cursor-pointer" onClick={() => { setOpen(!open); if (!open) track("recipe_opened", { recipe: r.id, missing_items_count: r.missingCount }); }}>
+        <div className="flex justify-between items-start gap-2">
+          <div className="flex-1 min-w-0">
+            <h3 className="font-mincho text-[17px] font-semibold text-pantry-text mb-1">{r.name}</h3>
+            <p className="text-xs text-pantry-text-light mb-1.5">{r.description}</p>
+            <div className="flex gap-1 flex-wrap">
+              <Badge>⏱ {r.time}分</Badge>
+              <Badge>{r.difficulty}</Badge>
+              <Badge>{r.displayServings}</Badge>
+              {tags.map((t, i) => <Badge key={i} variant={t.variant}>{t.label}</Badge>)}
+            </div>
+          </div>
+          <span className="text-lg text-pantry-text-light mt-1">{open ? "▾" : "▸"}</span>
+        </div>
+
+        {mode === "shopping" && r.missingItems.length > 0 && (
+          <div className="mt-2.5 p-2.5 rounded-lg bg-pantry-warn-bg border border-[#f0d890]">
+            <div className="text-[11px] font-bold text-pantry-warn mb-1 font-mincho">🛒 買い足しアイテム</div>
+            <div className="flex gap-1 flex-wrap">
+              {r.missingItems.map((m, i) => (
+                <span key={i} className="text-[11px] px-2 py-0.5 rounded-full bg-white border border-[#f0d890] text-[#8a6d1b]">
+                  {m.name} {m.deficit}{m.unit}
+                </span>
+              ))}
+            </div>
+          </div>
+        )}
+      </div>
+
+      {open && (
+        <div className="px-3.5 pb-3.5 border-t border-[#efe6d4]">
+          <div className="mt-3">
+            <h4 className="text-[13px] font-bold text-pantry-text-mid font-mincho mb-1.5">材料（{r.displayServings}）</h4>
+            {r.scaledIngredients.map((ing, i) => {
+              const miss = r.missingItems.find(m => m.name === ing.name);
+              return (
+                <div key={i} className={`flex justify-between px-2 py-1 rounded text-[13px] font-mincho ${miss ? "bg-[rgba(184,134,11,0.06)]" : i % 2 === 0 ? "bg-[rgba(120,90,60,0.03)]" : ""}`}>
+                  <span className="text-pantry-text">{miss ? "🛒 " : ""}{ing.name}</span>
+                  <span className={miss ? "text-pantry-warn" : "text-pantry-text-light"}>{ing.required}{ing.unit}</span>
+                </div>
+              );
+            })}
+            {r.seasonings.length > 0 && (
+              <div className="text-[11px] text-pantry-text-light mt-1 px-2">＋ 調味料: {r.seasonings.join("、")}</div>
+            )}
+          </div>
+
+          <div className="mt-3.5">
+            <h4 className="text-[13px] font-bold text-pantry-text-mid font-mincho mb-1.5">作り方</h4>
+            {r.steps.map((step, i) => (
+              <div key={i} className="flex gap-2.5 text-[13px] font-mincho text-pantry-text mb-1.5">
+                <span className="shrink-0 w-[22px] h-[22px] rounded-full bg-pantry-accent text-white flex items-center justify-center text-[11px] mt-0.5">
+                  {i + 1}
+                </span>
+                <span className="flex-1 leading-relaxed">{step}</span>
+              </div>
+            ))}
+          </div>
+
+          <button
+            onClick={() => { onCook(r); track("cooked_clicked", { recipe: r.id }); }}
+            className="mt-3 px-4 py-2 rounded-lg bg-pantry-accent text-white font-mincho text-sm font-semibold hover:opacity-90 transition-opacity"
+          >
+            🍳 作った！（在庫を減らす）
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function ShoppingMemo({ recipes }: { recipes: RankedRecipe[] }) {
+  const allMissing: Record<string, MissingItem> = {};
+  recipes.forEach(r =>
+    r.missingItems.forEach(m => {
+      const key = m.name + m.unit;
+      if (!allMissing[key]) allMissing[key] = { ...m };
+      else allMissing[key].deficit = Math.max(allMissing[key].deficit, m.deficit);
+    })
+  );
+  const items = Object.values(allMissing);
+  if (items.length === 0) return null;
+
+  const [copied, setCopied] = useState(false);
+  const text = items.map(m => `□ ${m.name} ${m.deficit}${m.unit}`).join("\n");
+
+  const copy = async () => {
+    try {
+      await navigator.clipboard.writeText(text);
+      setCopied(true);
+      track("shopping_list_copied", { missing_items_count: items.length });
+      setTimeout(() => setCopied(false), 2000);
+    } catch {}
+  };
+
+  return (
+    <div className="bg-pantry-warn-bg border border-[#f0d890] rounded-xl p-3.5 mb-4">
+      <div className="flex justify-between items-center mb-2">
+        <span className="text-sm font-bold text-pantry-warn font-mincho">📋 買い物メモ</span>
+        <button onClick={copy}
+          className="text-[12px] px-2.5 py-1 rounded-lg bg-pantry-warn text-white font-mincho font-semibold hover:opacity-90">
+          {copied ? "✓ コピー済み" : "コピー"}
+        </button>
+      </div>
+      {items.map((m, i) => (
+        <div key={i} className="text-[13px] font-mincho text-[#6a5520] py-0.5">
+          □ {m.name} — {m.deficit}{m.unit}
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function PantryItemRow({ item, onUpdate, onDelete }: {
+  item: PantryItem;
+  onUpdate: (i: PantryItem) => void;
+  onDelete: (id: string) => void;
+}) {
+  const [editing, setEditing] = useState(false);
+  const [f, setF] = useState({ name: item.name, amount: String(item.amount), unit: item.unit, expiry: item.expiry || "" });
+
+  const save = () => {
+    if (f.name.trim()) {
+      onUpdate({ ...item, name: f.name.trim(), amount: parseFloat(f.amount) || 0, unit: f.unit, expiry: f.expiry || undefined });
+      track("pantry_edited", { action: "update" });
+    }
+    setEditing(false);
+  };
+
+  if (editing) {
+    return (
+      <div className="flex flex-wrap gap-1.5 p-1.5 bg-[rgba(120,90,60,0.05)] rounded-lg items-center">
+        <input value={f.name} onChange={e => setF({ ...f, name: e.target.value })} placeholder="食材名" autoFocus
+          onKeyDown={e => e.key === "Enter" && save()}
+          className="flex-1 min-w-[70px] px-2 py-1 rounded border border-pantry-accent-light bg-pantry-card font-mincho text-[13px]" />
+        <input value={f.amount} onChange={e => setF({ ...f, amount: e.target.value })} type="number" placeholder="量"
+          className="w-14 px-2 py-1 rounded border border-pantry-accent-light bg-pantry-card font-mincho text-[13px] text-center" />
+        <select value={f.unit} onChange={e => setF({ ...f, unit: e.target.value })}
+          className="w-14 px-1 py-1 rounded border border-pantry-accent-light bg-pantry-card font-mincho text-[13px]">
+          {UNITS.map(u => <option key={u} value={u}>{u}</option>)}
+        </select>
+        <input value={f.expiry} onChange={e => setF({ ...f, expiry: e.target.value })} type="date"
+          className="w-[110px] px-2 py-1 rounded border border-pantry-accent-light bg-pantry-card font-mincho text-[13px]" />
+        <button onClick={save} className="text-[12px] px-2 py-1 rounded bg-pantry-accent text-white font-mincho">保存</button>
+        <button onClick={() => setEditing(false)} className="text-[12px] px-2 py-1 text-pantry-text-light">×</button>
+      </div>
+    );
+  }
+
+  const today = new Date().toISOString().slice(0, 10);
+  const isExpired = item.expiry && item.expiry <= today;
+  const isNear = item.expiry && !isExpired && (new Date(item.expiry).getTime() - Date.now()) / 86400000 < 3;
+
+  return (
+    <div className="flex items-center gap-1.5 py-1 px-2 rounded cursor-pointer hover:bg-[rgba(120,90,60,0.04)] group transition-colors"
+      onClick={() => setEditing(true)}>
+      <span className="flex-1 text-[13px] font-mincho text-pantry-text">
+        {item.name}
+        {isExpired && <span className="text-[10px] text-red-500 ml-1">期限切れ</span>}
+        {isNear && <span className="text-[10px] text-pantry-warn ml-1">もうすぐ期限</span>}
+      </span>
+      <span className="text-[13px] text-pantry-text-light font-mincho">{item.amount}{item.unit}</span>
+      {item.expiry && <span className={`text-[10px] ${isExpired ? "text-red-500" : "text-pantry-text-light"}`}>{item.expiry.slice(5)}</span>}
+      <button onClick={e => { e.stopPropagation(); onDelete(item.id); }}
+        className="opacity-0 group-hover:opacity-100 text-[14px] text-red-400 px-1 transition-opacity">×</button>
+    </div>
+  );
+}
+
+function AddItemInline({ onAdd, category }: { onAdd: (i: PantryItem) => void; category: string }) {
+  const [open, setOpen] = useState(false);
+  const [f, setF] = useState({ name: "", amount: "", unit: "g", expiry: "" });
+
+  const submit = () => {
+    if (f.name.trim()) {
+      onAdd({ id: uid(), name: f.name.trim(), amount: parseFloat(f.amount) || 1, unit: f.unit, category: category as PantryItem["category"], expiry: f.expiry || undefined });
+      setF({ name: "", amount: "", unit: "g", expiry: "" });
+      setOpen(false);
+      track("pantry_edited", { action: "add" });
+    }
+  };
+
+  if (!open) return (
+    <button onClick={() => setOpen(true)}
+      className="w-full py-1 text-[12px] border-2 border-dashed border-pantry-accent-light text-pantry-text-light rounded-lg font-mincho hover:border-pantry-accent hover:text-pantry-accent transition-colors">
+      ＋ 追加
+    </button>
+  );
+
+  return (
+    <div className="flex flex-wrap gap-1.5 p-1.5 bg-[rgba(120,90,60,0.05)] rounded-lg items-center">
+      <input value={f.name} onChange={e => setF({ ...f, name: e.target.value })} placeholder="食材名" autoFocus
+        onKeyDown={e => e.key === "Enter" && submit()}
+        className="flex-1 min-w-[70px] px-2 py-1 rounded border border-pantry-accent-light bg-pantry-card font-mincho text-[13px]" />
+      <input value={f.amount} onChange={e => setF({ ...f, amount: e.target.value })} type="number" placeholder="量"
+        className="w-14 px-2 py-1 rounded border border-pantry-accent-light bg-pantry-card font-mincho text-[13px] text-center" />
+      <select value={f.unit} onChange={e => setF({ ...f, unit: e.target.value })}
+        className="w-14 px-1 py-1 rounded border border-pantry-accent-light bg-pantry-card font-mincho text-[13px]">
+        {UNITS.map(u => <option key={u} value={u}>{u}</option>)}
+      </select>
+      <input value={f.expiry} onChange={e => setF({ ...f, expiry: e.target.value })} type="date"
+        className="w-[110px] px-2 py-1 rounded border border-pantry-accent-light bg-pantry-card font-mincho text-[13px]" />
+      <button onClick={submit} className="text-[12px] px-2 py-1 rounded bg-pantry-accent text-white font-mincho">追加</button>
+      <button onClick={() => setOpen(false)} className="text-[12px] px-2 py-1 text-pantry-text-light">×</button>
+    </div>
+  );
+}
+
+// ═══════════════════════════════════════════════════════════════
+//  Main Page
+// ═══════════════════════════════════════════════════════════════
+export default function HomePage() {
+  const [tab, setTab] = useState<"home" | "pantry">("home");
+  const [pantry, setPantry] = useState<PantryItem[]>([]);
+  const [loaded, setLoaded] = useState(false);
+  const [servings, setServings] = useState(2);
+  const [mealType, setMealType] = useState("any");
+  const [mealCount, setMealCount] = useState(1);
+  const [maxBuy, setMaxBuy] = useState(3);
+  const [toast, setToast] = useState<string | null>(null);
+
+  // Init
+  useEffect(() => {
+    initAnalytics();
+    const saved = loadPantry();
+    const settings = loadSettings();
+    setPantry(saved.length > 0 ? saved : SAMPLE_PANTRY);
+    setServings(settings.servings);
+    setMealType(settings.mealType);
+    setMealCount(settings.mealCount);
+    setLoaded(true);
+  }, []);
+
+  // Persist
+  useEffect(() => {
+    if (!loaded) return;
+    savePantry(pantry);
+    saveSettings({ servings, mealType, mealCount });
+  }, [pantry, servings, mealType, mealCount, loaded]);
+
+  // Rankings
+  const homeRecipes = useMemo(() =>
+    rankRecipes(pantry, { servings, mealType, mealCount, maxMissing: 0 }).slice(0, 3),
+    [pantry, servings, mealType, mealCount]
+  );
+
+  const shopRecipes = useMemo(() =>
+    rankRecipes(pantry, { servings, mealType, mealCount, maxMissing: maxBuy })
+      .filter(r => r.missingCount > 0)
+      .slice(0, 3),
+    [pantry, servings, mealType, mealCount, maxBuy]
+  );
+
+  useEffect(() => {
+    if (loaded) track("generate_viewed", { homeCount: homeRecipes.length, shopCount: shopRecipes.length, peopleCount: servings, mealType, mealCount });
+  }, [homeRecipes, shopRecipes, loaded]);
+
+  const handleCook = (recipe: RankedRecipe) => {
+    setPantry(prev => decrementPantry(prev, recipe));
+    addCookEvent({ recipeId: recipe.id, cookedAt: new Date().toISOString(), servings });
+    setToast(recipe.name);
+    setTimeout(() => setToast(null), 3000);
+  };
+
+  const displayServings = `${servings * mealCount}人前`;
+
+  if (!loaded) return (
+    <div className="flex items-center justify-center h-screen font-mincho text-pantry-text-light">読み込み中...</div>
+  );
+
+  const grouped = CATEGORIES.map(c => ({
+    ...c,
+    items: pantry.filter(p => p.category === c.id),
+  }));
+
+  return (
+    <div className="min-h-screen bg-gradient-to-br from-pantry-bg via-[#f5ede0] to-[#f0e8d8]">
+      {/* Toast */}
+      {toast && (
+        <div className="fixed top-[70px] left-1/2 -translate-x-1/2 z-50 bg-pantry-success text-white px-5 py-2.5 rounded-xl text-sm font-mincho shadow-lg"
+          style={{ animation: "slideUp 0.3s" }}>
+          🍳 {toast}を作りました！在庫を更新しました
+        </div>
+      )}
+
+      {/* Header */}
+      <header className="sticky top-0 z-30 bg-pantry-bg/90 backdrop-blur-md border-b border-pantry-border">
+        <div className="max-w-[640px] mx-auto px-4 py-2.5 flex items-center gap-2">
+          <span className="text-2xl">🍳</span>
+          <h1 className="text-lg font-bold text-pantry-text font-mincho tracking-wide">うちの食材で何つくる？</h1>
+        </div>
+        <div className="max-w-[640px] mx-auto flex border-t border-pantry-border">
+          {([["home", "🏠 今日のおすすめ"], ["pantry", "🧊 パントリー"]] as const).map(([id, label]) => (
+            <button key={id} onClick={() => { setTab(id); track("mode_switched", { to: id }); }}
+              className={`flex-1 py-2.5 text-[13px] font-mincho transition-all border-b-[2.5px] ${
+                tab === id ? "font-bold text-pantry-accent border-pantry-accent" : "text-pantry-text-light border-transparent"
+              }`}>
+              {label}
+            </button>
+          ))}
+        </div>
+      </header>
+
+      <main className="max-w-[640px] mx-auto px-4 py-4">
+        {tab === "home" && (
+          <>
+            {/* Options */}
+            <div className="bg-pantry-card border border-pantry-border rounded-xl p-3.5 mb-4">
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="text-[11px] font-bold text-pantry-text-mid block mb-1">食事タイプ</label>
+                  <select value={mealType} onChange={e => setMealType(e.target.value)}
+                    className="w-full px-2 py-1.5 rounded-lg border border-pantry-accent-light bg-pantry-bg font-mincho text-[13px] text-pantry-text">
+                    {MEAL_TYPES.map(m => <option key={m.id} value={m.id}>{m.label}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <label className="text-[11px] font-bold text-pantry-text-mid block mb-1">人数</label>
+                  <div className="flex gap-1">
+                    {[1, 2, 3, 4].map(n => (
+                      <button key={n} onClick={() => setServings(n)}
+                        className={`flex-1 py-1.5 rounded-lg text-[13px] font-semibold font-mincho border transition-all ${
+                          servings === n ? "bg-pantry-accent text-white border-pantry-accent" : "bg-pantry-bg text-pantry-accent border-pantry-accent-light"
+                        }`}>
+                        {n}人
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              </div>
+              <div className="mt-2.5">
+                <label className="text-[11px] font-bold text-pantry-text-mid block mb-1">食数</label>
+                <div className="flex gap-1">
+                  {[1, 2, 3].map(n => (
+                    <button key={n} onClick={() => setMealCount(n)}
+                      className={`flex-1 py-1.5 rounded-lg text-[13px] font-semibold font-mincho border transition-all ${
+                        mealCount === n ? "bg-pantry-accent text-white border-pantry-accent" : "bg-pantry-bg text-pantry-accent border-pantry-accent-light"
+                      }`}>
+                      {n}食
+                    </button>
+                  ))}
+                </div>
+              </div>
+            </div>
+
+            {/* Home Recipes */}
+            <div className="mb-6">
+              <h2 className="text-[15px] font-bold text-pantry-text font-mincho mb-2.5 flex items-center gap-1.5">
+                🏠 買い物なしで作れるレシピ <Badge variant="success">{homeRecipes.length}件</Badge>
+              </h2>
+              {homeRecipes.length === 0 ? (
+                <div className="text-center py-6 text-pantry-text-light text-[13px]">
+                  <div className="text-3xl mb-2">😅</div>
+                  該当するレシピがありません。パントリーに食材を追加するか条件を変えてみてください。
+                </div>
+              ) : (
+                <div className="flex flex-col gap-2.5">
+                  {homeRecipes.map(r => (
+                    <RecipeCard key={r.id} r={{ ...r, displayServings }} mode="home" onCook={handleCook} />
+                  ))}
+                </div>
+              )}
+            </div>
+
+            {/* Shopping Recipes */}
+            <div>
+              <div className="flex items-center gap-2 mb-2.5 flex-wrap">
+                <h2 className="text-[15px] font-bold text-pantry-text font-mincho flex items-center gap-1.5 m-0">
+                  🛒 ちょい足しレシピ
+                </h2>
+                <div className="flex gap-1 items-center">
+                  <span className="text-[11px] text-pantry-text-light">上限:</span>
+                  {[1, 2, 3, 5].map(n => (
+                    <button key={n} onClick={() => setMaxBuy(n)}
+                      className={`px-2 py-0.5 rounded text-[11px] font-semibold font-mincho border transition-all ${
+                        maxBuy === n ? "bg-pantry-warn text-white border-pantry-warn" : "bg-transparent text-pantry-warn border-[#f0d890]"
+                      }`}>
+                      {n}品
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {shopRecipes.length > 0 && <ShoppingMemo recipes={shopRecipes} />}
+
+              {shopRecipes.length === 0 ? (
+                <div className="text-center py-5 text-pantry-text-light text-[13px]">
+                  <div className="text-2xl mb-1">🎉</div>
+                  買い物なしでたくさん作れます！
+                </div>
+              ) : (
+                <div className="flex flex-col gap-2.5">
+                  {shopRecipes.map(r => (
+                    <RecipeCard key={r.id} r={{ ...r, displayServings }} mode="shopping" onCook={handleCook} />
+                  ))}
+                </div>
+              )}
+            </div>
+          </>
+        )}
+
+        {tab === "pantry" && (
+          <>
+            <div className="flex justify-between items-center mb-3">
+              <h2 className="text-[15px] font-bold text-pantry-text font-mincho flex items-center gap-1.5 m-0">
+                🧊 うちの食材 <Badge>{pantry.length}品目</Badge>
+              </h2>
+              <button onClick={() => { setPantry(SAMPLE_PANTRY); track("pantry_edited", { action: "load_sample" }); }}
+                className="text-[12px] px-2.5 py-1 rounded-lg border border-pantry-accent-light text-pantry-accent font-mincho hover:bg-[rgba(120,90,60,0.06)] transition-colors">
+                サンプル投入
+              </button>
+            </div>
+
+            <div className="flex flex-col gap-3">
+              {grouped.map(g => (
+                <div key={g.id} className="bg-pantry-card border border-pantry-border rounded-xl overflow-hidden">
+                  <div className="px-3 py-2 bg-[rgba(120,90,60,0.04)] border-b border-[#efe6d4] flex items-center gap-1.5">
+                    <span>{g.emoji}</span>
+                    <span className="text-[13px] font-bold text-pantry-text-mid">{g.label}</span>
+                    <span className="text-[11px] text-pantry-text-light">({g.items.length})</span>
+                  </div>
+                  <div className="p-1.5 flex flex-col gap-0.5">
+                    {g.items.map(item => (
+                      <PantryItemRow key={item.id} item={item}
+                        onUpdate={u => setPantry(p => p.map(i => i.id === u.id ? u : i))}
+                        onDelete={id => setPantry(p => p.filter(i => i.id !== id))} />
+                    ))}
+                    <AddItemInline onAdd={item => setPantry(p => [...p, item])} category={g.id} />
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            <div className="mt-5 p-3.5 bg-pantry-card border border-pantry-border rounded-xl">
+              <div className="text-[13px] font-bold text-pantry-text-mid mb-1.5">💡 ヒント</div>
+              <div className="text-[12px] text-pantry-text-light leading-relaxed space-y-1">
+                <p>・食材名をタップすると編集できます</p>
+                <p>・期限を設定すると、期限が近い食材を優先消費するレシピが上位に</p>
+                <p>・「作った！」ボタンで在庫が自動減算されます</p>
+                <p>・データはブラウザに自動保存されます</p>
+              </div>
+            </div>
+          </>
+        )}
+      </main>
+
+      <footer className="text-center py-5 text-[11px] text-[#c4b898]">
+        レシピDB: {recipes.length}品 ・ 在庫: {pantry.length}品目
+      </footer>
+    </div>
+  );
+}
