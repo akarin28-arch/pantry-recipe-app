@@ -327,6 +327,32 @@ function AddItemInline({ onAdd, category }: { onAdd: (i: PantryItem) => void; ca
   );
 }
 
+function QuickAddItem({ onAdd }: { onAdd: (i: PantryItem) => void }) {
+  const [f, setF] = useState({ name: "", amount: "", unit: "g" });
+  const submit = () => {
+    if (f.name.trim() && f.amount) {
+      onAdd({ id: uid(), name: f.name.trim(), amount: parseFloat(f.amount) || 1, unit: f.unit, category: "other" as any });
+      setF({ name: "", amount: "", unit: "g" });
+      track("pantry_edited", { action: "quick_add" });
+    }
+  };
+  return (
+    <div className="flex gap-1.5 items-center">
+      <input value={f.name} onChange={e => setF({ ...f, name: e.target.value })} placeholder="食材名 (例: トマト)"
+        onKeyDown={e => e.key === "Enter" && submit()}
+        className="flex-1 min-w-[80px] px-2 py-1.5 rounded border border-pantry-accent-light bg-pantry-bg font-mincho text-[13px]" />
+      <input value={f.amount} onChange={e => setF({ ...f, amount: e.target.value })} type="number" placeholder="量"
+        onKeyDown={e => e.key === "Enter" && submit()}
+        className="w-14 px-2 py-1.5 rounded border border-pantry-accent-light bg-pantry-bg font-mincho text-[13px] text-center" />
+      <select value={f.unit} onChange={e => setF({ ...f, unit: e.target.value })}
+        className="w-14 px-1 py-1.5 rounded border border-pantry-accent-light bg-pantry-bg font-mincho text-[13px]">
+        {["g", "個", "本", "枚", "パック", "ml"].map(u => <option key={u} value={u}>{u}</option>)}
+      </select>
+      <button onClick={submit} className="px-3 py-1.5 rounded bg-pantry-accent text-white font-mincho text-[12px] font-bold whitespace-nowrap">追加</button>
+    </div>
+  );
+}
+
 // ═══════════════════════════════════════════════════════════════
 //  Main Page
 // ═══════════════════════════════════════════════════════════════
@@ -448,18 +474,41 @@ export default function HomePage() {
             <select value={appMode} onChange={e => { setAppMode(e.target.value as any); if (e.target.value === "quick") setPantry([]); }}
               className="px-2 py-1 rounded bg-pantry-bg border border-pantry-accent text-[12px] font-bold text-pantry-accent">
               <option value="pantry">しっかり管理モード</option>
-              <option value="quick">今ある分だけモード</option>
+              <option value="quick">お手軽モード</option>
             </select>
           </div>
           <p className="text-[#6a5520] leading-relaxed text-xs">
             {appMode === "pantry"
-              ? "「うちの食材」タブにすべての家にあるものを登録しておくと、今から買い物なしで作れるレシピを自動で提案します。"
-              : "今回使いたい食材だけを「うちの食材」タブに入れて、サクッと作れるレシピを探すお手軽モードです。（※切り替えると現在の在庫表示はリセットされます）"}
+              ? "「うちの食材」タブにすべての家にあるものを登録しておくと、今から買い物なしで作れるレシピを自動提案します。"
+              : "今回使いたい食材だけをサクッと登録して、作れるレシピを探すお手軽モードです。（※モードを切り替えると現在の在庫表示はリセットされます）"}
           </p>
         </div>
 
         {tab === "home" && (
           <>
+            {appMode === "quick" && (
+              <div className="bg-[#fdfbf7] p-3 rounded-xl border border-pantry-border shadow-sm mb-4">
+                <div className="text-[13px] font-bold text-pantry-text-mid mb-2 flex justify-between items-center">
+                  <span>🛍️ 今回使う食材</span>
+                  <Badge>{pantry.length}品</Badge>
+                </div>
+                {pantry.length > 0 && (
+                  <div className="flex flex-col gap-1.5 mb-3">
+                    {pantry.map(item => (
+                      <div key={item.id} className="flex justify-between items-center text-[13px] bg-white border border-[#efe6d4] px-2 py-1.5 rounded font-mincho text-pantry-text">
+                        <span>{item.name}</span>
+                        <div className="flex gap-3 items-center">
+                          <span className="text-pantry-text-light">{item.amount}{item.unit}</span>
+                          <button onClick={() => setPantry(p => p.filter(i => i.id !== item.id))} className="text-red-400 font-sans text-lg mb-0.5 leading-none hover:opacity-70">×</button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+                <QuickAddItem onAdd={item => setPantry(p => [...p, item])} />
+              </div>
+            )}
+
             {/* Options */}
             <div className="bg-pantry-card border border-pantry-border rounded-xl p-3.5 mb-4 shadow-sm">
               <div className="flex flex-col gap-3">
@@ -501,11 +550,11 @@ export default function HomePage() {
                     <div className="col-span-2 mt-1">
                       <label className="text-[11px] font-bold text-pantry-text-mid block mb-1">買い足す食材の上限</label>
                       <div className="flex gap-1">
-                        {[1, 2, 3, 5].map(n => (
+                        {[0, 1, 2, 3, 5].map(n => (
                           <button key={n} onClick={() => setDishCount(n)}
                             className={`flex-1 py-1 rounded-lg text-[12px] font-semibold font-mincho border transition-all ${dishCount === n ? "bg-pantry-warn text-white border-pantry-warn shadow-sm" : "bg-pantry-bg text-pantry-warn border-[#f0d890]"
                               }`}>
-                            {n}品まで
+                            {n === 0 ? "なし" : `${n}品まで`}
                           </button>
                         ))}
                       </div>
@@ -528,9 +577,12 @@ export default function HomePage() {
               )}
 
               {pantry.length === 0 ? (
-                <div className="text-center py-6 text-pantry-text-light text-[13px]">
+                <div className="text-center py-6 text-pantry-text-light text-[13px] leading-relaxed">
                   <div className="text-3xl mb-2">🧊</div>
-                  食材が登録されていません。<br />「うちの食材」タブから食材を追加してください。
+                  食材が登録されていません。<br />
+                  {appMode === "quick" ? "上の入力欄から食材を追加してください。" : (
+                    <><button onClick={() => setTab("pantry")} className="text-pantry-accent underline hover:opacity-80 font-bold">「うちの食材」タブ</button>から食材を追加してください。</>
+                  )}
                 </div>
               ) : homeRecipes.length === 0 ? (
                 <div className="text-center py-6 text-pantry-text-light text-[13px]">
